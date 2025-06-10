@@ -1,7 +1,7 @@
 import os
 import argparse
 from transformers import T5ForConditionalGeneration, T5Tokenizer
-from datasets import load_from_disk
+from datasets import Dataset
 
 def parse_arguments():
     """
@@ -31,24 +31,34 @@ def load_model_and_tokenizer(model_name):
     tokenizer = T5Tokenizer.from_pretrained(model_name)
     model = T5ForConditionalGeneration.from_pretrained(model_name)
     
-    # Handle padding token
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
     print("Model and tokenizer loaded successfully")
-    print(f"Model parameters: ~{model.num_parameters() / 1e6:.1f}M")
+    print(f"Model parameters: {model.num_parameters():,}")
+    print(f"Tokenizer vocab size: {tokenizer.vocab_size}")
+    
+    # Save model and tokenizer for next stage
+    model.save_pretrained("/scratch/model")
+    tokenizer.save_pretrained("/scratch/tokenizer")
+    print("Saved model to /scratch/model and tokenizer to /scratch/tokenizer")
     
     return model, tokenizer
 
-def tokenize_dataset(tokenizer, max_input_length, max_target_length):
+def tokenize_data(tokenizer, max_input_length, max_target_length):
     """
     Load processed data and tokenize it
     """
     print("Loading processed SQuAD data...")
     
-    # Load the dataset saved from previous job
-    dataset = load_from_disk("/scratch/processed_squad_data")
-    print(f"Loaded {len(dataset)} examples")
+    # Load the processed dataset from previous job
+    if not os.path.exists("/scratch/processed_squad_data"):
+        raise FileNotFoundError("Processed SQuAD data not found. Make sure data preparation job completed successfully.")
+    
+    dataset = Dataset.load_from_disk("/scratch/processed_squad_data")
+    print(f"Loaded dataset with {len(dataset)} examples")
+    
+    print("Tokenizing data...")
     
     def tokenize_function(examples):
         # Tokenize inputs
@@ -72,25 +82,20 @@ def tokenize_dataset(tokenizer, max_input_length, max_target_length):
         model_inputs["labels"] = targets["input_ids"]
         return model_inputs
     
-    print("Tokenizing dataset...")
+    # Apply tokenization
     tokenized_dataset = dataset.map(
         tokenize_function, 
         batched=True,
         remove_columns=["input_text", "target_text"]
     )
     
-    print("Tokenization complete!")
+    print("Tokenization complete")
     print(f"Sample tokenized input shape: {len(tokenized_dataset[0]['input_ids'])}")
     print(f"Sample tokenized label shape: {len(tokenized_dataset[0]['labels'])}")
     
-    # Save tokenized dataset
-    tokenized_dataset.save_to_disk("/scratch/tokenized_squad_data")
-    print("Saved tokenized data to /scratch/tokenized_squad_data")
-    
-    # Save model and tokenizer for next stage
-    model.save_pretrained("/scratch/loaded_model")
-    tokenizer.save_pretrained("/scratch/loaded_tokenizer")
-    print("Saved model and tokenizer to /scratch/")
+    # Save tokenized data for training stage
+    tokenized_dataset.save_to_disk("/scratch/tokenized_data")
+    print("Saved tokenized data to /scratch/tokenized_data")
     
     return tokenized_dataset
 
@@ -113,19 +118,15 @@ def main():
         # Load model and tokenizer
         model, tokenizer = load_model_and_tokenizer(args.model_name)
         
-        # Tokenize the dataset
-        tokenized_dataset = tokenize_dataset(
-            tokenizer, 
-            args.max_input_length, 
-            args.max_target_length
-        )
+        # Tokenize the processed data
+        tokenized_dataset = tokenize_data(tokenizer, args.max_input_length, args.max_target_length)
         
         print(f"\nModel loading and tokenization completed successfully!")
         print(f"Ready for training with {len(tokenized_dataset)} tokenized examples")
         return True
         
     except Exception as e:
-        print(f"Model loading/tokenization failed: {e}")
+        print(f"Model loading and tokenization failed: {e}")
         import traceback
         traceback.print_exc()
         return False
