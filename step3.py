@@ -100,7 +100,7 @@ def fine_tune_model(model, tokenizer, train_dataset, val_dataset, args):
         eval_steps=200,
         save_steps=500,
         save_total_limit=2,
-        evaluation_strategy="steps",
+        eval_strategy="steps",
         remove_unused_columns=False,
         report_to=None,  # Disable wandb/tensorboard for simplicity
     )
