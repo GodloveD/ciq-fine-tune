@@ -21,7 +21,7 @@ def parse_arguments():
                        help='Number of CPU cores available')
     parser.add_argument('--memory_gb', type=int, default=32,
                        help='Memory in GB')
-    parser.add_argument('--num_epochs', type=int, default=3,
+    parser.add_argument('--num_epochs', type=int, default=1,
                        help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=8,
                        help='Training batch size')
