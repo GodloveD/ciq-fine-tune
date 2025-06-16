@@ -28,17 +28,17 @@ def load_model_and_tokenizer(model_name):
     """
     print(f"Loading model: {model_name}")
     
+    # Trainer requires the tokenizer for padding, creating attention masks, handling special tokens
     tokenizer = T5Tokenizer.from_pretrained(model_name)
     model = T5ForConditionalGeneration.from_pretrained(model_name)
     
+    # Ensure tokenizer has a pad token
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
     print("Model and tokenizer loaded successfully")
-    print(f"Model parameters: {model.num_parameters():,}")
-    print(f"Tokenizer vocab size: {tokenizer.vocab_size}")
     
-    # Save model and tokenizer for next stage
+    # Save model and tokenizer to volume for fine-tuning stage
     model.save_pretrained("/scratch/model")
     tokenizer.save_pretrained("/scratch/tokenizer")
     print("Saved model to /scratch/model and tokenizer to /scratch/tokenizer")
@@ -51,17 +51,28 @@ def tokenize_data(tokenizer, max_input_length, max_target_length):
     """
     print("Loading processed SQuAD data...")
     
-    # Load the processed dataset from previous job
+    # Check to ensure processed data exists
     if not os.path.exists("/scratch/processed_squad_data"):
         raise FileNotFoundError("Processed SQuAD data not found. Make sure data preparation job completed successfully.")
     
+    # Load the processed dataset from previous job
     dataset = Dataset.load_from_disk("/scratch/processed_squad_data")
     print(f"Loaded dataset with {len(dataset)} examples")
     
     print("Tokenizing data...")
     
     def tokenize_function(examples):
-        # Tokenize inputs
+        '''
+        Tokenize inputs
+
+        PARAMETERS:
+        - examples: Dictionary with keys 'input_text' and 'target_text'
+        - max_length: Maximum length for input and target sequences
+        - truncation: Whether to truncate sequences longer than max_length
+        - padding: Whether to pad sequences shorter than max_length
+        - return_tensors: Whether to return as PyTorch tensors (HuggingFace datasets better with Python lists)
+        
+        '''
         model_inputs = tokenizer(
             examples["input_text"],
             max_length=max_input_length,
@@ -79,6 +90,8 @@ def tokenize_data(tokenizer, max_input_length, max_target_length):
             return_tensors=None
         )
         
+        # Add input_ids as labels to model inputs dictionary
+        # The Hugging Face Trainer expects the target outputs to be in the 'labels' key
         model_inputs["labels"] = targets["input_ids"]
         return model_inputs
     
@@ -100,9 +113,6 @@ def tokenize_data(tokenizer, max_input_length, max_target_length):
     return tokenized_dataset
 
 def main():
-    print("=" * 50)
-    print("MODEL LOADING AND TOKENIZATION")
-    print("=" * 50)
     
     args = parse_arguments()
     

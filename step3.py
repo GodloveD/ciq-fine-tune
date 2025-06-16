@@ -85,6 +85,21 @@ def fine_tune_model(model, tokenizer, train_dataset, val_dataset, args):
     # Calculate effective batch size
     effective_batch_size = args.batch_size * args.gradient_accumulation_steps
     print(f"Effective batch size: {effective_batch_size}")
+
+    '''
+    PARAMETERS:
+    - output_dir: Directory to save the fine-tuned model
+    - overwrite_output_dir: Whether to overwrite the output directory if it exists
+    - num_train_epochs: Number of epochs to train (Currently set to 1 for quick testing)
+    - per_device_train_batch_size: Batch size per device during training
+    - per_device_eval_batch_size: Batch size per device during evaluation
+    - gradient_accumulation_steps: Number of steps to accumulate gradients before updating model weights
+    - learning_rate: Learning rate for the optimizer
+    '''
+    
+    # Calculate total training steps based on dataset size and batch size
+    # Used for logging/warmup/evaluation/save frequency/amount
+    total_steps = (len(train_dataset) // effective_batch_size) * args.num_epochs  
     
     training_args = TrainingArguments(
         output_dir=output_dir,
@@ -95,22 +110,37 @@ def fine_tune_model(model, tokenizer, train_dataset, val_dataset, args):
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         learning_rate=args.learning_rate,
         dataloader_num_workers=min(args.cpu_cores, 8),  # Use available cores but cap at 8
-        warmup_steps=100,
-        logging_steps=50,
-        eval_steps=200,
-        save_steps=500,
-        save_total_limit=2,
-        eval_strategy="steps",
-        remove_unused_columns=False,
-        report_to=None,  # Disable wandb/tensorboard for simplicity
+        
+        # eval / save config
+        warmup_steps = max(total_steps // 10, 10)       # {10}% warmup
+        eval_steps = max(total_steps // 4, 10)          # Evaluate {4} times during training
+        save_steps = max(total_steps // 2, 25)          # Save {2} times during training
+        logging_steps = max(total_steps // 10, 5)       # Log {10} times during training
+        
+        save_total_limit=2,                             # Each checkpoint is ~1GB for T5-base / Saves disk space on ephemeral volume
+        eval_strategy="steps",                          # "steps" gives more frequent feedback during long epochs
+        remove_unused_columns=False,                    # Usually Trainer auto-removes columns it doesn't need, required for Trainer to work with custom datasets
+        report_to=None,                                 # Disable wandb/tensorboard for simplicity
     )
     
+    '''
+    Example of gradient accumulation:
+    
+    Step 1: Load batch of 8 examples → Forward pass → Calculate loss → Store gradients
+    Step 2: Load batch of 8 examples → Forward pass → Calculate loss → Accumulate gradients  
+    Step 3: Load batch of 8 examples → Forward pass → Calculate loss → Accumulate gradients
+    Step 4: Load batch of 8 examples → Forward pass → Calculate loss → Accumulate gradients
+    → UPDATE MODEL WEIGHTS (effective batch size: 32)
+    '''
+    
+    # Create a data collator for padding and batching
     data_collator = DataCollatorForSeq2Seq(
         tokenizer,
         model=model,
         padding=True
     )
     
+    # Initialize the Trainer with the model, training arguments, datasets, and tokenizer
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -143,7 +173,7 @@ def save_training_summary(args, output_dir, train_dataset, val_dataset):
     Save a summary of the training configuration and results
     """
     summary = {
-        "model_name": "google/flan-t5-base",  # Could parameterize this
+        "model_name": "google/flan-t5-base", 
         "cpu_cores": args.cpu_cores,
         "memory_gb": args.memory_gb,
         "training_config": {
@@ -170,10 +200,6 @@ def save_training_summary(args, output_dir, train_dataset, val_dataset):
     return summary
 
 def main():
-    print("=" * 50)
-    print("T5 SQUAD FINE-TUNING")
-    print("=" * 50)
-    
     args = parse_arguments()
     
     print(f"Configuration:")

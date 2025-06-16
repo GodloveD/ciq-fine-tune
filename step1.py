@@ -29,9 +29,11 @@ def prepare_squad_data(max_examples, max_input_length):
     dataset = load_dataset("squad_v2")
     train_data = dataset["train"].shuffle(seed=42).select(range(max_examples))
     
+    # Create lists for input and target texts
     input_texts = []
     target_texts = []
     
+    # (FOR each example in the dataset, format it for T5)
     print("Converting SQuAD examples to T5 format...")
     for i, example in enumerate(train_data):
         if i % 1000 == 0:
@@ -50,7 +52,7 @@ def prepare_squad_data(max_examples, max_input_length):
         else:
             target_text = "This question cannot be answered based on the given context."
         
-        # Basic length filtering
+        # Basic length filtering (long sequences use exponentially more memory)
         if len(input_text.split()) <= max_input_length:
             input_texts.append(input_text)
             target_texts.append(target_text)
@@ -73,10 +75,6 @@ def prepare_squad_data(max_examples, max_input_length):
     return processed_dataset
 
 def main():
-    print("=" * 50)
-    print("SQUAD DATA PREPARATION")
-    print("=" * 50)
-    
     args = parse_arguments()
     
     print(f"Configuration:")
