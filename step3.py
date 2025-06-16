@@ -112,10 +112,10 @@ def fine_tune_model(model, tokenizer, train_dataset, val_dataset, args):
         dataloader_num_workers=min(args.cpu_cores, 8),  # Use available cores but cap at 8
         
         # eval / save config
-        warmup_steps = max(total_steps // 10, 10)       # {10}% warmup
-        eval_steps = max(total_steps // 4, 10)          # Evaluate {4} times during training
-        save_steps = max(total_steps // 2, 25)          # Save {2} times during training
-        logging_steps = max(total_steps // 10, 5)       # Log {10} times during training
+        warmup_steps = max(total_steps // 10, 10)       # n percent is warmup
+        eval_steps = max(total_steps // 4, 10)          # Evaluate n times during training
+        save_steps = max(total_steps // 2, 25)          # Save n times during training
+        logging_steps = max(total_steps // 10, 5)       # Log n times during training
         
         save_total_limit=2,                             # Each checkpoint is ~1GB for T5-base / Saves disk space on ephemeral volume
         eval_strategy="steps",                          # "steps" gives more frequent feedback during long epochs
